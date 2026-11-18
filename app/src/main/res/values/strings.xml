@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">抖音续火花辅助</string>
+    <string name="accessibility_desc">用于读取消息列表与会话界面节点、判断火花状态并辅助发送预设文案；仅作用于抖音。</string>
+</resources>
