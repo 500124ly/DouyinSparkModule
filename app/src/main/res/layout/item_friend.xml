@@ -14,6 +14,13 @@
         android:textSize="14sp" />
 
     <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnEditText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="改文案"
+        style="@style/Widget.Material3.Button.TextButton" />
+
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/btnDelete"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

@@ -11,11 +11,13 @@ import com.dy.sparkmodule.model.FriendConfig
 
 class FriendAdapter(
     private val data: MutableList<FriendConfig>,
-    private val onDelete: (Int) -> Unit
+    private val onDelete: (Int) -> Unit,
+    private val onEdit: (Int) -> Unit
 ) : RecyclerView.Adapter<FriendAdapter.VH>() {
 
     class VH(v: View) : RecyclerView.ViewHolder(v) {
         val info: TextView = v.findViewById(R.id.textInfo)
+        val edit: Button = v.findViewById(R.id.btnEditText)
         val del: Button = v.findViewById(R.id.btnDelete)
     }
 
@@ -33,9 +35,13 @@ class FriendAdapter(
             "${f.name}（备注：${f.note}）"
         }
         holder.info.text = if (f.customText.isNullOrBlank()) {
-            head
+            "$head\n专属文案：（未设置，用全局轮换）"
         } else {
             "$head\n专属文案：${f.customText}"
+        }
+        holder.edit.setOnClickListener {
+            val idx = holder.bindingAdapterPosition
+            if (idx != RecyclerView.NO_POSITION) onEdit(idx)
         }
         holder.del.setOnClickListener {
             val idx = holder.bindingAdapterPosition

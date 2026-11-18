@@ -33,6 +33,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var editSendKw: TextInputEditText
     private lateinit var switchDebug: SwitchMaterial
     private lateinit var switchMsgCheck: SwitchMaterial
+    private lateinit var switchIgnoreSpark: SwitchMaterial
+    private lateinit var editExtinguishKw: TextInputEditText
     private lateinit var editSelfBubbleId: TextInputEditText
     private lateinit var editTodayKw: TextInputEditText
     private lateinit var statusText: TextView
@@ -49,6 +51,8 @@ class MainActivity : AppCompatActivity() {
         editSendKw = findViewById(R.id.editSendKw)
         switchDebug = findViewById(R.id.switchDebug)
         switchMsgCheck = findViewById(R.id.switchMsgCheck)
+        switchIgnoreSpark = findViewById(R.id.switchIgnoreSpark)
+        editExtinguishKw = findViewById(R.id.editExtinguishKw)
         editSelfBubbleId = findViewById(R.id.editSelfBubbleId)
         editTodayKw = findViewById(R.id.editTodayKw)
         statusText = findViewById(R.id.statusText)
@@ -56,12 +60,16 @@ class MainActivity : AppCompatActivity() {
         val recycler: RecyclerView = findViewById(R.id.recyclerFriends)
 
         friends = Prefs.getFriends(this)
-        adapter = FriendAdapter(friends) { idx ->
-            friends.removeAt(idx)
-            adapter.notifyDataSetChanged()
-            persist()
-            refreshStatus()
-        }
+        adapter = FriendAdapter(
+            friends,
+            onDelete = { idx ->
+                friends.removeAt(idx)
+                adapter.notifyDataSetChanged()
+                persist()
+                refreshStatus()
+            },
+            onEdit = { idx -> showEditTextDialog(idx) }
+        )
         recycler.layoutManager = LinearLayoutManager(this)
         recycler.adapter = adapter
 
@@ -73,9 +81,12 @@ class MainActivity : AppCompatActivity() {
         }
         switchDebug.setOnCheckedChangeListener { _, v -> Prefs.setDebugDump(this, v) }
         switchMsgCheck.setOnCheckedChangeListener { _, v -> Prefs.setMsgCheckEnabled(this, v) }
+        switchIgnoreSpark.setOnCheckedChangeListener { _, v -> Prefs.setIgnoreSpark(this, v) }
 
         findViewById<com.google.android.material.button.MaterialButton>(R.id.btnAddFriend)
             .setOnClickListener { showAddDialog() }
+        findViewById<com.google.android.material.button.MaterialButton>(R.id.btnScanFriends)
+            .setOnClickListener { scanFriendsFromList() }
         findViewById<com.google.android.material.button.MaterialButton>(R.id.btnOpenAccessibility)
             .setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
         findViewById<com.google.android.material.button.MaterialButton>(R.id.btnRunOnce)
@@ -98,6 +109,8 @@ class MainActivity : AppCompatActivity() {
         editSendKw.setText(Prefs.getSendKeyword(this))
         switchDebug.isChecked = Prefs.isDebugDump(this)
         switchMsgCheck.isChecked = Prefs.isMsgCheckEnabled(this)
+        switchIgnoreSpark.isChecked = Prefs.isIgnoreSpark(this)
+        editExtinguishKw.setText(Prefs.getExtinguishKeyword(this))
         editSelfBubbleId.setText(Prefs.getSelfBubbleIdKeyword(this))
         editTodayKw.setText(Prefs.getTodayKeyword(this))
     }
@@ -114,6 +127,8 @@ class MainActivity : AppCompatActivity() {
         Prefs.setSendKeyword(this, editSendKw.text.toString().trim().ifBlank { "发送" })
         Prefs.setSelfBubbleIdKeyword(this, editSelfBubbleId.text.toString().trim())
         Prefs.setTodayKeyword(this, editTodayKw.text.toString().trim())
+        Prefs.setIgnoreSpark(this, switchIgnoreSpark.isChecked)
+        Prefs.setExtinguishKeyword(this, editExtinguishKw.text.toString().trim())
         Prefs.setFriends(this, friends)
     }
 
@@ -138,6 +153,70 @@ class MainActivity : AppCompatActivity() {
                 val note = noteEt.text.toString().trim().ifBlank { null }
                 val custom = textEt.text.toString().trim().ifBlank { null }
                 friends.add(FriendConfig(name, note, custom))
+                adapter.notifyDataSetChanged()
+                persist()
+                refreshStatus()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun scanFriendsFromList() {
+        persist()
+        val svc = SparkAccessibilityService.instance
+        if (svc == null) {
+            Toast.makeText(this, "请先在无障碍设置中开启本模块服务", Toast.LENGTH_LONG).show()
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            return
+        }
+        packageManager.getLaunchIntentForPackage(Const.AWEME_PACKAGE)?.let { startActivity(it) }
+        svc.onScannedFriends = { names -> showPickFriendsDialog(names) }
+        Toast.makeText(this, "正在读取抖音消息列表，请稍候…", Toast.LENGTH_SHORT).show()
+        svc.handler.postDelayed({ svc.scanCurrentList() }, 1800)
+    }
+
+    private fun showPickFriendsDialog(names: List<String>) {
+        val existing = friends.map { it.name }.toSet() + friends.mapNotNull { it.note }.toSet()
+        val candidates = names.filter { it !in existing }
+        if (candidates.isEmpty()) {
+            Toast.makeText(this, "列表里没有可导入的新好友", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val checked = BooleanArray(candidates.size)
+        AlertDialog.Builder(this)
+            .setTitle("勾选要添加的好友（共 ${candidates.size} 个）")
+            .setMultiChoiceItems(candidates.toTypedArray(), checked) { _, which, isChecked ->
+                checked[which] = isChecked
+            }
+            .setPositiveButton("添加") { _, _ ->
+                var count = 0
+                candidates.forEachIndexed { i, name ->
+                    if (checked[i]) {
+                        friends.add(FriendConfig(name, null, null))
+                        count++
+                    }
+                }
+                adapter.notifyDataSetChanged()
+                persist()
+                refreshStatus()
+                Toast.makeText(this, "已添加 $count 位好友", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showEditTextDialog(idx: Int) {
+        val f = friends[idx]
+        val et = EditText(this).apply {
+            hint = "专属文案（留空则用全局轮换）"
+            setText(f.customText ?: "")
+        }
+        AlertDialog.Builder(this)
+            .setTitle("修改 ${f.name} 的专属文案")
+            .setView(et)
+            .setPositiveButton("保存") { _, _ ->
+                val custom = et.text.toString().trim().ifBlank { null }
+                friends[idx] = f.copy(customText = custom)
                 adapter.notifyDataSetChanged()
                 persist()
                 refreshStatus()

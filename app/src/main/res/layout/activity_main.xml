@@ -73,6 +73,18 @@
             </com.google.android.material.textfield.TextInputLayout>
         </LinearLayout>
 
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:hint="熄灭火花关键词（逗号分隔，识别到即发送重燃）">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/editExtinguishKw"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text" />
+        </com.google.android.material.textfield.TextInputLayout>
+
         <com.google.android.material.switchmaterial.SwitchMaterial
             android:id="@+id/switchDebug"
             android:layout_width="match_parent"
@@ -86,6 +98,13 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="会话内防重：读取气泡判断今天我方是否已发" />
+
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switchIgnoreSpark"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="无火花标识也直接发送（适配火花仅为图标的版本）" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -132,10 +151,16 @@
                 android:textStyle="bold" />
 
             <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnScanFriends"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="从列表导入" />
+
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnAddFriend"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="添加" />
+                android:text="手动添加" />
         </LinearLayout>
 
         <androidx.recyclerview.widget.RecyclerView

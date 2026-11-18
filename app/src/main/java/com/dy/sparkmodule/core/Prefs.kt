@@ -29,6 +29,8 @@ object Prefs {
     private const val KEY_SELF_BUBBLE_ID = "self_bubble_id"
     private const val KEY_USE_SIDE = "use_side_judgment"
     private const val KEY_TODAY_KEYWORD = "today_keyword"
+    private const val KEY_IGNORE_SPARK = "ignore_spark"
+    private const val KEY_EXTINGUISH_KW = "extinguish_keyword"
 
     private fun sp(ctx: Context) =
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -176,4 +178,21 @@ object Prefs {
         sp(ctx).getString(KEY_TODAY_KEYWORD, "今天") ?: "今天"
     fun setTodayKeyword(ctx: Context, v: String) =
         sp(ctx).edit().putString(KEY_TODAY_KEYWORD, v.trim().ifBlank { "今天" }).apply()
+
+    // ---------- 火花状态识别 ----------
+
+    /** 开启后：匹配到好友即进入会话发送，不再强制要求页面出现火花文字（适配火花仅为图标的版本） */
+    fun isIgnoreSpark(ctx: Context) = sp(ctx).getBoolean(KEY_IGNORE_SPARK, true)
+    fun setIgnoreSpark(ctx: Context, v: Boolean) =
+        sp(ctx).edit().putBoolean(KEY_IGNORE_SPARK, v).apply()
+
+    /** 熄灭火花关键词（逗号分隔）；识别到即视为火花已熄灭，正常发送消息重燃 */
+    fun getExtinguishKeyword(ctx: Context) =
+        sp(ctx).getString(KEY_EXTINGUISH_KW, "火花已熄灭,火花消失") ?: "火花已熄灭,火花消失"
+    fun setExtinguishKeyword(ctx: Context, v: String) =
+        sp(ctx).edit().putString(KEY_EXTINGUISH_KW, v.trim()).apply()
+
+    /** 解析为熄灭关键词列表，支持中英文逗号 */
+    fun getExtinguishKeywords(ctx: Context): List<String> =
+        getExtinguishKeyword(ctx).split(",", "，").map { it.trim() }.filter { it.isNotBlank() }
 }

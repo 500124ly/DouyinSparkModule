@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Toast
 import com.dy.sparkmodule.model.FriendConfig
 
 /**
@@ -29,7 +30,9 @@ class SparkAccessibilityService : AccessibilityService() {
     val handler = Handler(Looper.getMainLooper())
     private var running = false
     private val pending = ArrayDeque<FriendConfig>()
-    private var lastDumpAt = 0L
+
+    /** 面板「从消息列表导入好友」的扫描结果回调，回主线程执行 */
+    var onScannedFriends: ((List<String>) -> Unit)? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -43,12 +46,7 @@ class SparkAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.packageName != Const.AWEME_PACKAGE) return
-        if (!Prefs.isDebugDump(this)) return
-        val now = System.currentTimeMillis()
-        if (now - lastDumpAt < 1500) return
-        lastDumpAt = now
-        rootInActiveWindow?.let { dumpTree(it, "事件节点树") }
+        // 节点树抓取改为面板「抓取当前页面」手动触发；事件不自动写日志，保持业务日志干净
     }
 
     override fun onInterrupt() {}
@@ -114,11 +112,21 @@ class SparkAccessibilityService : AccessibilityService() {
         }
 
         val sparkKw = Prefs.getSparkKeyword(this)
+        val extKws = Prefs.getExtinguishKeywords(this)
         val rowText = row.textSubtree()
-        if (!rowText.contains(sparkKw)) {
-            LogStore.log("${friend.name}：未检测到火花标识（关键字「$sparkKw」），跳过")
-            processNext()
-            return
+        val hasSpark = rowText.contains(sparkKw)
+        val extinguished = extKws.any { rowText.contains(it) }
+
+        when {
+            hasSpark -> LogStore.log("${friend.name}：检测到火花标识")
+            extinguished -> LogStore.log("${friend.name}：检测到火花已熄灭，将发送消息重燃")
+            Prefs.isIgnoreSpark(this) ->
+                LogStore.log("${friend.name}：未识别到火花/熄灭标记，已开启无视火花直接发送")
+            else -> {
+                LogStore.log("${friend.name}：未检测到火花标识（关键字「$sparkKw」），跳过")
+                processNext()
+                return
+            }
         }
 
         clickableAncestor(row)?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
@@ -130,7 +138,9 @@ class SparkAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow
         if (root == null) {
             LogStore.log("${friend.name}：会话页节点获取失败，返回")
+            toastFail(friend.name)
             backToList()
+            handler.postDelayed({ processNext() }, 900)
             return
         }
 
@@ -153,6 +163,7 @@ class SparkAccessibilityService : AccessibilityService() {
         val input = findEditText(root)
         if (input == null) {
             LogStore.log("${friend.name}：未找到输入框，可能界面未加载完成")
+            toastFail(friend.name)
             backToList()
             processNext()
             return
@@ -171,8 +182,10 @@ class SparkAccessibilityService : AccessibilityService() {
             if (sendBtn != null && sendBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                 Prefs.markFriendDoneToday(this, friend.name)
                 LogStore.log("${friend.name}：已发送并标记今日已续")
+                toastSuccess(friend.name)
             } else {
                 LogStore.log("${friend.name}：未找到可点击的发送按钮，请核对发送关键字")
+                toastFail(friend.name)
             }
             backToList()
             handler.postDelayed({ processNext() }, 900)
@@ -181,6 +194,23 @@ class SparkAccessibilityService : AccessibilityService() {
 
     private fun backToList() {
         performGlobalAction(GLOBAL_ACTION_BACK)
+    }
+
+    private fun toastSuccess(name: String) =
+        Toast.makeText(this, "【$name】续火花发送成功", Toast.LENGTH_LONG).show()
+
+    private fun toastFail(name: String) =
+        Toast.makeText(this, "【$name】发送失败，请检查界面", Toast.LENGTH_LONG).show()
+
+    /** 面板调用：抓取当前消息列表里可见的会话名，回传面板供勾选导入 */
+    fun scanCurrentList() {
+        val names = collectConversationNames(rootInActiveWindow)
+        handler.post { onScannedFriends?.invoke(names) }
+    }
+
+    /** 面板手动触发：把当前界面节点树写入诊断日志 */
+    fun dumpCurrentWindow(title: String = "手动抓取节点") {
+        rootInActiveWindow?.let { dumpTree(it, title) }
     }
 
     // ====================== 节点查找工具 ======================
@@ -208,6 +238,23 @@ class SparkAccessibilityService : AccessibilityService() {
             if (node.contentDescription?.toString()?.contains(desc) == true && hit == null) hit = node
         }
         return hit
+    }
+
+    /** 从当前消息列表节点树中提取可见会话名（昵称/最后消息文本），供面板勾选导入 */
+    private fun collectConversationNames(root: AccessibilityNodeInfo?): List<String> {
+        if (root == null) return emptyList()
+        val ignore = setOf("消息", "朋友", "推荐", "搜索", "关注", "同城", "首页", "直播", "商城", "我", "返回", "私信", "创建群聊", "互相关注")
+        val timeRegex = Regex("^\\d{1,2}:\\d{2}")
+        val agoRegex = Regex("^\\d+\\s*(分钟|小时|天|秒|周|月|年)前?$")
+        val out = LinkedHashSet<String>()
+        traverse(root) { node ->
+            val t = node.text?.toString()?.trim().orEmpty()
+            if (t.isBlank() || t.length > 20) return@traverse
+            if (ignore.contains(t)) return@traverse
+            if (timeRegex.matches(t) || agoRegex.matches(t)) return@traverse
+            out.add(t)
+        }
+        return out.toList()
     }
 
     private fun findEditText(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
