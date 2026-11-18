@@ -18,12 +18,12 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install SDK 34 packages
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          SDKMANAGER="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          echo "Using sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses
+          "$SDKMANAGER" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
